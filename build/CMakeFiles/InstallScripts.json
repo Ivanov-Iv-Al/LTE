@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/vboxuser/projects/lte_pci_detector/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

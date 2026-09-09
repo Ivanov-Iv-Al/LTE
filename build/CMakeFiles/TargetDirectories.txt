@@ -1,0 +1,3 @@
+/home/vboxuser/projects/lte_pci_detector/build/CMakeFiles/lte_pci_detector.dir
+/home/vboxuser/projects/lte_pci_detector/build/CMakeFiles/edit_cache.dir
+/home/vboxuser/projects/lte_pci_detector/build/CMakeFiles/rebuild_cache.dir
