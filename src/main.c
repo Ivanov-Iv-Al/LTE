@@ -8,6 +8,7 @@
 
 #define N_FFT 128
 #define N_SYM 62
+#define N_HALF 31
 #define N_SAMPLES 19200
 #define RUNS 100
 #define FILE_NAME "signal.pcm"
@@ -70,6 +71,64 @@ void fft(double* re, double* im, int n) {
     }
 }
 
+void gen_m_sequence(int* s, int len) {
+    int x[31] = {0, 0, 0, 0, 1};
+    for (int j = 0; j < 26; j++) {
+        x[j + 5] = (x[j + 2] + x[j]) % 2;
+    }
+    for (int i = 0; i < len; i++) {
+        s[i] = 1 - 2 * x[i];
+    }
+}
+
+void cyclic_shift(int* s, int m, int* out, int len) {
+    for (int n = 0; n < len; n++) {
+        out[n] = s[(n + m) % 31];
+    }
+}
+
+void gen_scrambling_c(int nid2, int* c0, int* c1) {
+    int x[31] = {0, 0, 0, 0, 1};
+    for (int j = 0; j < 26; j++) {
+        x[j + 5] = (x[j + 3] + x[j]) % 2;
+    }
+    for (int i = 0; i < 31; i++) {
+        c0[i] = 1 - 2 * x[(i + nid2) % 31];
+        c1[i] = 1 - 2 * x[(i + nid2 + 3) % 31];
+    }
+}
+
+void gen_scrambling_z(int m0, int* z1) {
+    int x[31] = {0, 0, 0, 0, 1};
+    for (int j = 0; j < 26; j++) {
+        x[j + 5] = (x[j + 4] + x[j + 2] + x[j + 1] + x[j]) % 2;
+    }
+    for (int i = 0; i < 31; i++) {
+        z1[i] = 1 - 2 * x[(i + (m0 % 8)) % 31];
+    }
+}
+
+void gen_sss(int nid1, int nid2, int* d) {
+    int s[31], s0[31], s1[31];
+    int c0[31], c1[31], z1[31];
+    
+    gen_m_sequence(s, 31);
+    
+    int m0 = 15 * (nid1 / 112) + 5 * (nid1 % 8);
+    int m1 = (nid1 % 112) + 5 * (nid1 / 112);
+    
+    cyclic_shift(s, m0, s0, 31);
+    cyclic_shift(s, m1, s1, 31);
+    
+    gen_scrambling_c(nid2, c0, c1);
+    gen_scrambling_z(m0, z1);
+    
+    for (int n = 0; n < 31; n++) {
+        d[2 * n]     = s0[n] * c0[n];
+        d[2 * n + 1] = s1[n] * c1[n] * z1[n];
+    }
+}
+
 int detect_pci(const double* signal, int nid2) {
     double re[N_FFT], im[N_FFT];
     for (int i = 0; i < N_FFT; i++) {
@@ -82,20 +141,25 @@ int detect_pci(const double* signal, int nid2) {
     double max_corr = 0;
     int best_nid1 = 0;
     
+    int d[62];
+    
     for (int nid1 = 0; nid1 < 168; nid1++) {
-        double corr = 0;
-        int m0 = 15 * (nid1 / 112) + 5 * (nid1 % 8);
-        int m1 = (nid1 % 112) + 5 * (nid1 / 112);
+        gen_sss(nid1, nid2, d);
+        
+        double corr_real = 0, corr_imag = 0;
         for (int k = 0; k < N_SYM; k++) {
-            double phase = 2 * M_PI * k * (m0 + m1) / N_SYM;
-            int idx = start + k;
-            corr += re[idx] * cos(phase) + im[idx] * sin(phase);
+            corr_real += re[start + k] * d[k];
+            corr_imag += im[start + k] * d[k];
         }
+        
+        double corr = sqrt(corr_real * corr_real + corr_imag * corr_imag);
+        
         if (corr > max_corr) {
             max_corr = corr;
             best_nid1 = nid1;
         }
     }
+    
     return 3 * best_nid1 + nid2;
 }
 
@@ -135,6 +199,7 @@ double* read_iq_file(const char* filename, int* samples_read) {
 }
 
 int main() {
+    printf("\nLTE PCI Detector\n");
     printf("FFT: %d, Symbols: %d, Samples: %d\n\n", N_FFT, N_SYM, N_SAMPLES);
     
     int samples_read = 0;
@@ -143,7 +208,7 @@ int main() {
     double pss[3][N_SYM];
     gen_pss(pss);
     
-    printf("Running %d iterations\n", RUNS);
+    printf("Running %d iterations...\n", RUNS);
     clock_t start_time = clock();
     
     int results[RUNS];
@@ -151,9 +216,11 @@ int main() {
     
     for (int run = 0; run < RUNS; run++) {
         clock_t run_start = clock();
+        
         double max_corr;
         int nid2 = detect_pss(signal, pss, &max_corr);
         results[run] = detect_pci(signal + N_FFT * 2, nid2);
+        
         clock_t run_end = clock();
         times[run] = (double)(run_end - run_start) / CLOCKS_PER_SEC * 1000;
     }
@@ -164,8 +231,8 @@ int main() {
     printf("\nResults\n");
     int pci = results[0];
     printf("Physical Cell ID (PCI): %d\n", pci);
-    printf("  NID(2): %d (PSS)\n", pci % 3);
-    printf("  NID(1): %d (SSS)\n", pci / 3);
+    printf("  NID(2): %d (from PSS)\n", pci % 3);
+    printf("  NID(1): %d (from SSS)\n", pci / 3);
     
     double min_time = times[0], max_time = times[0];
     double sum_time = 0;
