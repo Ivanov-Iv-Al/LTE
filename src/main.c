@@ -4,9 +4,7 @@
 #include <time.h>
 #include <string.h>
 
-#ifndef M_PI
 #define M_PI 3.14159265358979323846
-#endif
 
 #define N_FFT 128
 #define N_SYM 62
@@ -137,31 +135,15 @@ double* read_iq_file(const char* filename, int* samples_read) {
 }
 
 int main() {
-    printf("\n=== LTE PCI Detector ===\n");
     printf("FFT: %d, Symbols: %d, Samples: %d\n\n", N_FFT, N_SYM, N_SAMPLES);
     
     int samples_read = 0;
     double* signal = read_iq_file(FILE_NAME, &samples_read);
     
-    if (!signal) {
-        signal = (double*)malloc(N_SAMPLES * 2 * sizeof(double));
-        if (!signal) {
-            printf("Memory allocation failed\n");
-            return 1;
-        }
-        srand(42);
-        for (int i = 0; i < N_SAMPLES * 2; i++) {
-            signal[i] = (double)(rand() % 1000 - 500) / 1000.0;
-        }
-        printf("Using synthetic signal\n\n");
-    } else {
-        printf("Loaded %d complex samples\n\n", samples_read);
-    }
-    
     double pss[3][N_SYM];
     gen_pss(pss);
     
-    printf("Running %d iterations...\n", RUNS);
+    printf("Running %d iterations\n", RUNS);
     clock_t start_time = clock();
     
     int results[RUNS];
@@ -182,9 +164,8 @@ int main() {
     printf("\nResults\n");
     int pci = results[0];
     printf("Physical Cell ID (PCI): %d\n", pci);
-    printf("  NID(2): %d (from PSS)\n", pci % 3);
-    printf("  NID(1): %d (from SSS)\n", pci / 3);
-    printf("  Formula: 3 * %d + %d = %d\n\n", pci / 3, pci % 3, pci);
+    printf("  NID(2): %d (PSS)\n", pci % 3);
+    printf("  NID(1): %d (SSS)\n", pci / 3);
     
     double min_time = times[0], max_time = times[0];
     double sum_time = 0;

@@ -1,5 +1,4 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/lte_pci_detector.dir/link.d"
   "CMakeFiles/lte_pci_detector.dir/src/main.c.o"
   "CMakeFiles/lte_pci_detector.dir/src/main.c.o.d"
   "lte_pci_detector"

@@ -1,1 +1,1 @@
-/usr/bin/cc -Wl,--dependency-file=CMakeFiles/lte_pci_detector.dir/link.d CMakeFiles/lte_pci_detector.dir/src/main.c.o -o lte_pci_detector  -lm
+/usr/bin/cc CMakeFiles/lte_pci_detector.dir/src/main.c.o -o lte_pci_detector  -lm 
