@@ -1,0 +1,20 @@
+=== LTE PCI Detector ===
+FFT: 128, Symbols: 62, Samples: 19200
+
+Loaded 19200 complex samples
+
+Running 100 iterations...
+
+Results
+PSS found at index: 1289
+SSS position: 1225
+Physical Cell ID (PCI): 263
+  NID(2): 2 (from PSS)
+  NID(1): 87 (from SSS)
+  Formula: 3 * 87 + 2 = 263
+
+Performance (100 runs):
+  Average: 65.389 ms
+  Min:     65.171 ms
+  Max:     66.925 ms
+  Total:   6538.910 ms
