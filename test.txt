@@ -20,13 +20,12 @@ void gen_pss(double pss[3][N_SYM]) {
             pss[nid2][n] = -M_PI * u[nid2] * (n + 31) * (n + 32) / 63;
 }
 
-int detect_pss(const double* signal, int len, double pss[3][N_SYM],
-               int* pss_pos, double corr_out[3]) {
+int detect_pss(const double* signal, int len, double pss[3][N_SYM], int* pss_pos) {
     double best_corr = 0;
     int best_nid2 = 0;
     int best_pos = 0;
 
-    for (int pos = 0; pos < len - N_SYM * 2; pos++) {
+    for (int pos = 0; pos < len - N_SYM * 2; pos += 2) {
         for (int nid2 = 0; nid2 < 3; nid2++) {
             double cr = 0, ci = 0;
             for (int n = 0; n < N_SYM; n++) {
@@ -42,17 +41,6 @@ int detect_pss(const double* signal, int len, double pss[3][N_SYM],
             }
         }
     }
-
-    for (int nid2 = 0; nid2 < 3; nid2++) {
-        double cr = 0, ci = 0;
-        for (int n = 0; n < N_SYM; n++) {
-            double ph = pss[nid2][n];
-            cr += signal[best_pos + 2*n]     * cos(ph) - signal[best_pos + 2*n + 1] * sin(ph);
-            ci += signal[best_pos + 2*n]     * sin(ph) + signal[best_pos + 2*n + 1] * cos(ph);
-        }
-        corr_out[nid2] = sqrt(cr*cr + ci*ci);
-    }
-
     *pss_pos = best_pos;
     return best_nid2;
 }
@@ -169,55 +157,55 @@ int main() {
 
     int samples_read = 0;
     double* signal = read_iq_file(FILE_NAME, &samples_read);
+
     if (!signal) {
-        printf("ERROR: cannot open '%s'\n", FILE_NAME);
-        return 1;
+        printf("signal.pcm not found, using synthetic signal\n\n");
+        signal = (double*)malloc(N_SAMPLES * 2 * sizeof(double));
+        srand(42);
+        for (int i = 0; i < N_SAMPLES * 2; i++)
+            signal[i] = (double)(rand() % 1000 - 500) / 1000.0;
+    } else {
+        printf("Loaded %d complex samples\n\n", samples_read);
     }
-    printf("Loaded %d complex samples\n\n", samples_read);
 
     double pss[3][N_SYM];
     gen_pss(pss);
 
     int pss_pos = 0;
-    double pss_corr[3];
-    int nid2 = detect_pss(signal, N_SAMPLES, pss, &pss_pos, pss_corr);
-
+    int nid2 = detect_pss(signal, N_SAMPLES, pss, &pss_pos);
     printf("PSS found at index %d\n", pss_pos / 2);
-    printf("  Correlations:\n");
-    for (int i = 0; i < 3; i++)
-        printf("    N_ID(2)=%d (u=%d): %.3f\n", i, (int[]){25,29,34}[i], pss_corr[i]);
-    printf("  Selected N_ID(2) = %d\n\n", nid2);
+    printf("N_ID(2) = %d\n\n", nid2);
 
     int best_offset = 0;
-    int best_pci = 0;
     int best_nid1 = 0;
     double best_corr = 0;
 
-    printf("Searching SSS offset:\n");
     for (int offset = 120; offset <= 160; offset++) {
         int sss_pos = pss_pos - offset;
         if (sss_pos < 0) continue;
 
         int n1 = 0;
         double c = 0;
-        int pci = detect_sss(signal, sss_pos, nid2, &n1, &c);
-
-        printf("  offset=%3d  N_ID(1)=%3d  corr=%.1f  PCI=%d\n",
-               offset, n1, c, pci);
+        detect_sss(signal, sss_pos, nid2, &n1, &c);
 
         if (c > best_corr) {
             best_corr = c;
             best_nid1 = n1;
             best_offset = offset;
-            best_pci = pci;
         }
     }
 
-    printf("\nBest offset: %d\n", best_offset);
-    printf("Best correlation: %.1f\n", best_corr);
+    int pci = 3 * best_nid1 + nid2;
+
+    printf("Best SSS offset: %d\n", best_offset);
     printf("N_ID(1) = %d\n", best_nid1);
-    printf("N_ID(2) = %d\n", nid2);
-    printf("PCI = 3 * %d + %d = %d\n\n", best_nid1, nid2, best_pci);
+    printf("Correlation = %.1f\n\n", best_corr);
+
+    printf("Results\n");
+    printf("Physical Cell ID (PCI): %d\n", pci);
+    printf("  NID(2): %d (from PSS)\n", pci % 3);
+    printf("  NID(1): %d (from SSS)\n", pci / 3);
+    printf("  Formula: 3 * %d + %d = %d\n\n", pci / 3, pci % 3, pci);
 
     printf("Running %d iterations...\n", RUNS);
     clock_t start_time = clock();
@@ -228,16 +216,15 @@ int main() {
     for (int run = 0; run < RUNS; run++) {
         clock_t run_start = clock();
 
-        int p_pos = 0;
-        double p_c[3];
-        int n2 = detect_pss(signal, N_SAMPLES, pss, &p_pos, p_c);
+        int p = 0;
+        int n2 = detect_pss(signal, N_SAMPLES, pss, &p);
 
-        int s_pos = p_pos - best_offset;
-        if (s_pos < 0) s_pos = 0;
+        int s = p - best_offset;
+        if (s < 0) s = 0;
 
         int n1 = 0;
         double c = 0;
-        results[run] = detect_sss(signal, s_pos, n2, &n1, &c);
+        results[run] = detect_sss(signal, s, n2, &n1, &c);
 
         clock_t run_end = clock();
         times[run] = (double)(run_end - run_start) / CLOCKS_PER_SEC * 1000;
@@ -245,12 +232,6 @@ int main() {
 
     clock_t end_time = clock();
     double total_time = (double)(end_time - start_time) / CLOCKS_PER_SEC * 1000;
-
-    printf("\nResults\n");
-    int pci = results[0];
-    printf("PCI: %d\n", pci);
-    printf("  N_ID(2) = %d\n", pci % 3);
-    printf("  N_ID(1) = %d\n", pci / 3);
 
     double min_time = times[0], max_time = times[0], sum_time = 0;
     for (int i = 0; i < RUNS; i++) {
