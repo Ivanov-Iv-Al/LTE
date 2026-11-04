@@ -1,1 +1,35 @@
+sudo apt-get update
+sudo apt-get install -y build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev
+sudo apt-get install -y libzmq3-dev
 
+git clone https://github.com/srsRAN/srsRAN_4G.git
+cd srsRAN_4G
+mkdir build
+cd build
+cmake ../
+make -j$(nproc)
+sudo make install
+srsran_install_configs.sh user
+
+sudo mkdir -p /root/.config/srsran
+sudo cp ~/.config/srsran/* /root/.config/srsran/
+
+sudo ip netns add uel
+sudo ip netns list
+
+cd ~/srsRAN_4G/build/srsepc/src
+sudo ./srsepc
+
+cd ~/srsRAN_4G/build/srsenb/src
+./srsenb --rf.device_name=zmq --rf.device_args="fail_on_disconnect=true,tx_port=tcp://*:2000,rx_port=tcp://localhost:2001,id=enb,base_srate=23.04e6"
+
+cd ~/srsRAN_4G/build/srsue/src
+sudo ./srsue --rf.device_name=zmq --rf.device_args="tx_port=tcp://*:2001,rx_port=tcp://localhost:2000,id=ue,base_srate=23.04e6" --gw.netns=uel
+
+ping 172.16.0.2
+sudo ip netns exec uel ping 172.16.0.1
+
+sudo ip netns delete uel
+sudo pkill srsepc
+sudo pkill srsenb
+sudo pkill srsue
